@@ -222,3 +222,26 @@ if st.session_state.xp >= 1000:
         ">📥 DOWNLOAD / PRINT PDF CERTIFICATE</button>
     """
     st.components.v1.html(print_script, height=100)
+    with t4:
+     st.subheader("🧪 Practice Sandbox (No XP)")
+    st.caption("Test your prompting skills here with Llama 3.2")
+
+    # 1. Logic for handling new input
+    if p := st.chat_input("Type your prompt here..."):
+        # Add user message to history
+        st.session_state.messages.append({"role": "user", "content": p})
+        
+        # Get AI Response
+        try:
+            with st.spinner("🤖 AI is thinking..."):
+                response = ollama.chat(model='llama3.2', messages=st.session_state.messages)
+                assistant_content = response['message']['content']
+                # Add AI message to history
+                st.session_state.messages.append({"role": "assistant", "content": assistant_content})
+        except Exception as e:
+            st.error(f"Ollama Error: {e}. Make sure Ollama is running locally!")
+
+    # 2. Display the entire conversation history
+    for m in st.session_state.messages:
+        with st.chat_message(m["role"]):
+            st.markdown(m["content"])
