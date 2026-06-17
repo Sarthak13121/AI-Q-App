@@ -6,16 +6,28 @@ import pandas as pd
 import os
 
 # --- 1. SECURE API SETUP ---
+import os
+from dotenv import load_dotenv
+load_dotenv()  # Loads variable from local .env if present
+
 def get_api_key():
+    # 1. Check Streamlit secrets
     try:
         if "GROQ_API_KEY" in st.secrets:
             return st.secrets["GROQ_API_KEY"]
     except Exception:
         pass
-    return "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"
 
-API_KEY = get_api_key()
-client = Groq(api_key=API_KEY)
+    # 2. Check environment variables
+    env_key = os.getenv("GROQ_API_KEY")
+    if env_key:
+        return env_key
+
+    # 3. Check session state for user input
+    if "user_groq_api_key" in st.session_state and st.session_state.user_groq_api_key:
+        return st.session_state.user_groq_api_key
+
+    return None
 
 # --- 2. DATA PERSISTENCE ---
 SCORE_FILE = "leaderboard.csv"
@@ -252,6 +264,18 @@ with st.sidebar:
     st.metric("CURRENT XP", f"{st.session_state.xp} PTS")
     save_score(st.session_state.player_name, st.session_state.xp, "Elite")
     st.write("---")
+    
+    # If API key is not configured, show input in sidebar
+    api_key_configured = get_api_key()
+    if not api_key_configured:
+        st.subheader("🔑 GROQ API KEY")
+        user_entered_key = st.text_input("Enter Groq API Key:", type="password", key="groq_key_input")
+        if user_entered_key:
+            st.session_state.user_groq_api_key = user_entered_key
+            st.rerun()
+        st.warning("Please configure your Groq API key to activate the Neural Sandbox.")
+        st.write("---")
+
     if st.button("🏠 COMMAND CENTER"): st.session_state.page = "home"; st.session_state.game_active = False; st.rerun()
     if st.button("🔄 REBOOT PROGRESS"): st.session_state.unlocked_levels = ["Easy"]; st.session_state.xp = 0; st.rerun()
     st.write("---")
@@ -289,10 +313,21 @@ elif st.session_state.page == "play":
 
 elif st.session_state.page == "sandbox":
     st.title("🧪 NEURAL SANDBOX")
-    for m in st.session_state.messages:
-        with st.chat_message(m["role"]): st.markdown(m["content"])
-    if p := st.chat_input("Inject prompt..."):
-        st.session_state.messages.append({"role": "user", "content": p})
-        with st.chat_message("user"): st.markdown(p)
-        res = client.chat.completions.create(model="llama-3.1-8b-instant", messages=[{"role": "user", "content": p}])
-        st.session_state.messages.append({"role": "assistant", "content": res.choices[0].message.content}); st.rerun()
+    
+    active_key = get_api_key()
+    if not active_key:
+        st.error("🔒 Neural Sandbox communication link offline. API Key is missing.")
+        st.info("Provide a valid Groq API Key in the Sidebar terminal to establish communication protocols.")
+    else:
+        for m in st.session_state.messages:
+            with st.chat_message(m["role"]): st.markdown(m["content"])
+        if p := st.chat_input("Inject prompt..."):
+            st.session_state.messages.append({"role": "user", "content": p})
+            with st.chat_message("user"): st.markdown(p)
+            try:
+                temp_client = Groq(api_key=active_key)
+                res = temp_client.chat.completions.create(model="llama-3.1-8b-instant", messages=[{"role": "user", "content": p}])
+                st.session_state.messages.append({"role": "assistant", "content": res.choices[0].message.content})
+                st.rerun()
+            except Exception as e:
+                st.error(f"Transmission Failed: {e}")
